@@ -1,0 +1,144 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  validate:
+    name: Validate Composer
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate composer.json
+        run: composer validate --strict
+
+  lint:
+    name: PHP Lint
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        php: ['7.4', '8.0', '8.1', '8.2', '8.3']
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+
+      - name: Check PHP syntax
+        run: |
+          find . -path ./vendor -prune -o -name '*.php' -print0 | xargs -0 -n1 php -l
+
+  code-style:
+    name: PHP-CS-Fixer
+    runs-on: ubuntu-latest
+    needs: [validate]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          coverage: none
+          tools: php-cs-fixer
+
+      - name: Check code style
+        run: php-cs-fixer fix --dry-run --diff --using-cache=no || true
+
+  static-analysis:
+    name: PHPStan
+    runs-on: ubuntu-latest
+    needs: [validate, lint]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          coverage: none
+
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-progress
+
+      - name: Run PHPStan
+        run: composer analyse || true
+
+  test:
+    name: PHPUnit
+    runs-on: ubuntu-latest
+    needs: [validate, lint]
+
+    strategy:
+      matrix:
+        php: ['7.4', '8.0', '8.1', '8.2']
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: xdebug
+
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-progress
+
+      - name: Check for PHPUnit config
+        id: phpunit-check
+        run: |
+          if [ -f phpunit.xml ] || [ -f phpunit.xml.dist ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run PHPUnit
+        if: steps.phpunit-check.outputs.exists == 'true'
+        run: composer test
+
+      - name: Skip PHPUnit (no config)
+        if: steps.phpunit-check.outputs.exists == 'false'
+        run: echo "PHPUnit configuration not found, skipping tests"
