@@ -1,0 +1,57 @@
+{
+    "name": "metern/metern",
+    "description": "Home energy metering and monitoring application",
+    "type": "project",
+    "license": "GPL-3.0-or-later",
+    "homepage": "https://github.com/sersasso/meterN",
+    "keywords": ["energy", "metering", "monitoring", "home-automation"],
+    "require": {
+        "php": ">=7.4"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^9.5 || ^10.0",
+        "phpstan/phpstan": "^1.10",
+        "friendsofphp/php-cs-fixer": "^3.0",
+        "vimeo/psalm": "^5.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "MeterN\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "MeterN\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit",
+        "analyse": "phpstan analyse",
+        "cs:fix": "php-cs-fixer fix",
+        "cs:check": "php-cs-fixer fix --dry-run --diff",
+        "lint": "find . -path ./vendor -prune -o -name '*.php' -print0 | xargs -0 -n1 php -l",
+        "psalm": "psalm",
+        "check": [
+            "@lint",
+            "@cs:check",
+            "@analyse"
+        ]
+    },
+    "scripts-descriptions": {
+        "test": "Run PHPUnit tests",
+        "analyse": "Run PHPStan static analysis",
+        "cs:fix": "Fix code style with PHP-CS-Fixer",
+        "cs:check": "Check code style without making changes",
+        "lint": "Check PHP syntax errors",
+        "psalm": "Run Psalm static analysis",
+        "check": "Run all checks (lint, cs:check, analyse)"
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "phpstan/extension-installer": true
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

@@ -1,0 +1,31 @@
+parameters:
+    # Start with a lower level and increase as codebase is cleaned up
+    level: 5
+
+    paths:
+        - src
+
+    # Exclude legacy code from analysis initially
+    excludePaths:
+        - vendor
+
+    # Report unmatched ignored errors
+    reportUnmatchedIgnoredErrors: false
+
+    # Treat phpdoc types as certain
+    treatPhpDocTypesAsCertain: false
+
+    # Check for missing typehints
+    checkMissingIterableValueType: false
+    checkGenericClassInNonGenericObjectType: false
+
+    # Ignore errors in legacy files during migration
+    ignoreErrors:
+        # Allow dynamic variable names in legacy code
+        - '#Variable \$\{.+\} might not be defined#'
+        # Allow includes with dynamic paths
+        - '#^Include file .+ is not found#'
+
+    # Parallel processing
+    parallel:
+        maximumNumberOfProcesses: 4

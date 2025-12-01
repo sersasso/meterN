@@ -1,0 +1,264 @@
+<?php
+
+/**
+ * Refactored Admin Login Page
+ *
+ * Uses MeterN\Admin\Auth for secure authentication,
+ * sessions for state management, and CSRF tokens for form protection.
+ *
+ * @package meterN
+ */
+
+declare(strict_types=1);
+
+// Start session for CSRF and login state
+session_start();
+
+define('checkaccess', true);
+
+// Autoload (when composer is set up)
+$autoloadFile = dirname(__DIR__) . '/vendor/autoload.php';
+if (file_exists($autoloadFile)) {
+    require_once $autoloadFile;
+}
+
+// Fallback manual include if autoload not available
+if (!class_exists('MeterN\\Admin\\Auth')) {
+    require_once dirname(__DIR__) . '/src/Admin/Auth.php';
+}
+
+use MeterN\Admin\Auth;
+
+// Include main config for settings
+require_once dirname(__DIR__) . '/config/config_main.php';
+
+// Initialize Auth with credentials file
+$credentialsFile = dirname(__DIR__) . '/config/.credentials.json';
+$auth = new Auth($credentialsFile);
+
+// CSRF Token functions
+function generateCsrfToken(): string
+{
+    if (empty($_SESSION['csrf_token'])) {
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    }
+    return $_SESSION['csrf_token'];
+}
+
+function verifyCsrfToken(string $token): bool
+{
+    if (empty($_SESSION['csrf_token'])) {
+        return false;
+    }
+    return hash_equals($_SESSION['csrf_token'], $token);
+}
+
+// Helper function for HTML escaping
+function e(string $value): string
+{
+    return htmlspecialchars($value, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+}
+
+// Process form submissions
+$error = '';
+$success = '';
+$showSetupForm = false;
+$showLoginForm = false;
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $csrfToken = $_POST['csrf_token'] ?? '';
+
+    if (!verifyCsrfToken($csrfToken)) {
+        $error = 'Invalid security token. Please refresh and try again.';
+    } else {
+        $action = $_POST['action'] ?? '';
+
+        if ($action === 'setup' && !$auth->hasUsers()) {
+            // Initial admin setup
+            $login = trim($_POST['login'] ?? '');
+            $password = trim($_POST['password'] ?? '');
+
+            if ($login === '' || $password === '') {
+                $error = 'Username and password are required.';
+            } elseif (strlen($password) < 8) {
+                $error = 'Password must be at least 8 characters.';
+            } elseif ($auth->createUser($login, $password)) {
+                $success = 'Admin account created successfully. You can now log in.';
+                // Regenerate CSRF token after successful action
+                unset($_SESSION['csrf_token']);
+            } else {
+                $error = 'Failed to create admin account. Check directory permissions.';
+            }
+        } elseif ($action === 'login' && $auth->hasUsers()) {
+            // Login attempt
+            $login = trim($_POST['login'] ?? '');
+            $password = trim($_POST['password'] ?? '');
+
+            if ($auth->verify($login, $password)) {
+                // Regenerate session ID to prevent session fixation
+                session_regenerate_id(true);
+                $_SESSION['authenticated'] = true;
+                $_SESSION['username'] = $login;
+                $_SESSION['login_time'] = time();
+
+                // Redirect to admin panel
+                header('Location: admin.php');
+                exit;
+            } else {
+                $error = 'Invalid username or password.';
+                // Add small delay to mitigate brute force
+                usleep(random_int(100000, 500000));
+            }
+        }
+    }
+}
+
+// Check if user is already logged in
+if (isset($_SESSION['authenticated']) && $_SESSION['authenticated'] === true) {
+    header('Location: admin.php');
+    exit;
+}
+
+// Determine which form to show
+$showSetupForm = !$auth->hasUsers();
+$showLoginForm = $auth->hasUsers();
+
+// Generate CSRF token for forms
+$csrfToken = generateCsrfToken();
+
+// Get web server user for setup instructions
+$processUser = function_exists('posix_getpwuid') ? posix_getpwuid(posix_geteuid()) : null;
+$webUser = $processUser['name'] ?? 'www-data';
+$curDir = dirname(__DIR__);
+
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <title>meterN Administration</title>
+    <link rel="stylesheet" href="../styles/default/css/style.css" type="text/css">
+    <script src="../js/strength/strength.js" defer></script>
+    <link rel="stylesheet" href="../js/strength/strength.css">
+    <style>
+        .admin-container { max-width: 600px; margin: 2rem auto; padding: 2rem; }
+        .form-group { margin-bottom: 1rem; }
+        .form-group label { display: block; margin-bottom: 0.5rem; font-weight: bold; }
+        .form-group input[type="text"],
+        .form-group input[type="password"] { width: 100%; padding: 0.5rem; }
+        .btn { padding: 0.5rem 1rem; cursor: pointer; }
+        .btn-primary { background: #4CAF50; color: white; border: none; }
+        .btn-secondary { background: #666; color: white; border: none; }
+        .alert { padding: 1rem; margin-bottom: 1rem; border-radius: 4px; }
+        .alert-error { background: #ffebee; color: #c62828; border: 1px solid #ef9a9a; }
+        .alert-success { background: #e8f5e9; color: #2e7d32; border: 1px solid #a5d6a7; }
+        .instructions { background: #f5f5f5; padding: 1rem; margin-bottom: 1rem; border-left: 4px solid #2196F3; }
+        .license-text { font-size: 0.9rem; color: #666; margin-top: 1rem; }
+    </style>
+</head>
+<body>
+<table width="95%" height="80%" border="0" cellspacing="0" cellpadding="0" align="center">
+    <tr bgcolor="#FFFFFF" height="64">
+        <td class="cadretopleft" width="128">&nbsp;<img src="../images/house48.png" width="48" height="48" alt="meterN"></td>
+        <td class="cadretop" align="center"><strong>meterN Administration</strong></td>
+        <td class="cadretopright" width="128" align="right">&nbsp;</td>
+    </tr>
+    <tr bgcolor="#CCCC66">
+        <td align="right" colspan="3" class="cadre" height="10">&nbsp;</td>
+    </tr>
+    <tr valign="top">
+        <td colspan="3" class="cadrebot" bgcolor="#d3dae2">
+            <div class="admin-container">
+
+<?php if ($error): ?>
+                <div class="alert alert-error"><?= e($error) ?></div>
+<?php endif; ?>
+
+<?php if ($success): ?>
+                <div class="alert alert-success"><?= e($success) ?></div>
+<?php endif; ?>
+
+<?php if ($showSetupForm): ?>
+                <h2>Welcome to meterN!</h2>
+
+                <div class="instructions">
+                    <p>The application is running on top of a web server. This folder must be owned by the <strong><?= e($webUser) ?></strong> user:</p>
+                    <code>chown -R <?= e($webUser) ?>:<?= e($webUser) ?> <?= e($curDir) ?>/</code>
+                    <p style="margin-top: 1rem;">You should also grant access to communication applications and peripheral ports.</p>
+                </div>
+
+                <p>Create your administrator account:</p>
+
+                <form method="post" action="">
+                    <input type="hidden" name="csrf_token" value="<?= e($csrfToken) ?>">
+                    <input type="hidden" name="action" value="setup">
+
+                    <div class="form-group">
+                        <label for="login">Username:</label>
+                        <input type="text" id="login" name="login" value="admin" required autocomplete="username">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="password">Password:</label>
+                        <input type="password" id="password" name="password" required minlength="8" autocomplete="new-password">
+                        <small style="color: #666;">Minimum 8 characters</small>
+                    </div>
+
+                    <div class="license-text">
+                        <p>By clicking 'Create Account', you explicitly agree with the software, libraries, and content licenses included in this package.</p>
+                        <p>meterN is released under the <a href="https://www.gnu.org/licenses/gpl.html" target="_blank">GNU GPLv3 license</a>.</p>
+                        <p>Highcharts, the JavaScript charting library, is free for non-commercial use only. <a href="https://highcharts.com" target="_blank">highcharts.com</a></p>
+                    </div>
+
+                    <div style="margin-top: 1rem;">
+                        <button type="submit" class="btn btn-primary">Create Account</button>
+                    </div>
+                </form>
+
+<?php elseif ($showLoginForm): ?>
+                <h2>Administrator Login</h2>
+
+                <form method="post" action="">
+                    <input type="hidden" name="csrf_token" value="<?= e($csrfToken) ?>">
+                    <input type="hidden" name="action" value="login">
+
+                    <div class="form-group">
+                        <label for="login">Username:</label>
+                        <input type="text" id="login" name="login" required autocomplete="username">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="password">Password:</label>
+                        <input type="password" id="password" name="password" required autocomplete="current-password">
+                    </div>
+
+                    <div style="margin-top: 1rem;">
+                        <button type="submit" class="btn btn-primary">Login</button>
+                    </div>
+                </form>
+
+<?php endif; ?>
+
+            </div>
+        </td>
+    </tr>
+</table>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize password strength indicator if available
+    if (typeof jQuery !== 'undefined' && jQuery.fn.strength) {
+        jQuery('#password').strength({
+            strengthClass: 'strength',
+            strengthMeterClass: 'strength_meter',
+            strengthButtonClass: 'button_strength',
+            strengthButtonText: 'Show password',
+            strengthButtonTextToggle: 'Hide password'
+        });
+    }
+});
+</script>
+</body>
+</html>
