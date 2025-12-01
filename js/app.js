@@ -263,6 +263,7 @@
         var updates = [];
 
         state.meters.forEach(function(meter) {
+            // Key format matches legacy programlive.php: ${'METNAME'.$i}$i
             var key = meter.name + meter.index;
             var value = data[key];
 

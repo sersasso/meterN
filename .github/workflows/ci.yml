@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main, master]
 
+# Restrict permissions for security
+permissions:
+  contents: read
+
 jobs:
   validate:
     name: Validate Composer
@@ -57,6 +61,8 @@ jobs:
           tools: php-cs-fixer
 
       - name: Check code style
+        # NOTE: || true allows CI to pass during initial adoption.
+        # Remove || true once codebase style is fixed to enforce style checks.
         run: php-cs-fixer fix --dry-run --diff --using-cache=no || true
 
   static-analysis:
@@ -90,6 +96,8 @@ jobs:
         run: composer install --prefer-dist --no-progress
 
       - name: Run PHPStan
+        # NOTE: || true allows CI to pass during initial adoption.
+        # Remove || true once static analysis issues are fixed to enforce checks.
         run: composer analyse || true
 
   test:

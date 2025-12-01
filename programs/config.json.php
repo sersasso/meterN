@@ -25,6 +25,8 @@ header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-cache, must-revalidate');
 
 // Build meters array from individual config files
+// NOTE: This uses variable-variables as a bridge to read existing config_metN.php files.
+// Once migrated to config/meters.php, this can be simplified to just include that file.
 $metersConfig = [];
 
 for ($i = 1; $i <= $NUMMETER; $i++) {
